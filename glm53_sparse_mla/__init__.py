@@ -11,9 +11,11 @@ import os
 
 import torch
 
-__all__ = ["sparse_fwd", "HEADS_PER_RANK", "KV_LORA_RANK"]
+__all__ = ["sparse_fwd", "HEADS_PER_RANK", "SUPPORTED_HEADS_PER_RANK", "KV_LORA_RANK"]
 
-HEADS_PER_RANK = 32   # 64 q-heads / TP2; the warp decomposition is fixed to this
+HEADS_PER_RANK = 32   # 64 q-heads / TP2
+# 8 / 16 / 32 heads per rank, i.e. TP=8 / TP=4 / TP=2 on a 64-head model.
+SUPPORTED_HEADS_PER_RANK = (8, 16, 32)
 KV_LORA_RANK = 512    # head_size, since qk_rope_head_dim == 0 (NoPE)
 
 

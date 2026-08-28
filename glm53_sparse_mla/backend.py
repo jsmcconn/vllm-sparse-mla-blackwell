@@ -92,7 +92,7 @@ if TYPE_CHECKING:
 logger = init_logger(__name__)
 
 KV_LORA_RANK = glm53_sparse_mla.KV_LORA_RANK       # 512
-HEADS_PER_RANK = glm53_sparse_mla.HEADS_PER_RANK   # 32
+SUPPORTED_HEADS_PER_RANK = glm53_sparse_mla.SUPPORTED_HEADS_PER_RANK
 
 
 class Glm53SparseMLABackend(AttentionBackend):
@@ -300,12 +300,12 @@ class Glm53SparseMLAImpl(MLAAttentionImpl[Glm53SparseMLAMetadata]):
         self.kv_cache_dtype = kv_cache_dtype
         self.kv_lora_rank: int = mla_args["kv_lora_rank"]
         self.softmax_scale = scale
-        if num_heads != HEADS_PER_RANK:
+        if num_heads not in SUPPORTED_HEADS_PER_RANK:
             raise NotImplementedError(
-                f"glm53 sparse MLA's warp decomposition is fixed to "
-                f"{HEADS_PER_RANK} heads per rank (TP=2 for GLM-5.3-Flash); got "
-                f"{num_heads}. 64 heads would need 114944 B of shared memory "
-                f"against the 101376 B sm_12x ceiling."
+                f"glm53 sparse MLA supports {sorted(SUPPORTED_HEADS_PER_RANK)} heads "
+                f"per rank (TP=8/4/2 on a 64-head model); got {num_heads}. "
+                f"64 heads on one rank would need 114944 B of shared memory "
+                f"against the 101376 B sm_12x ceiling, so TP must be at least 2."
             )
         # The indexer carries the shared buffer for normal layers; the explicit
         # buffer covers backbone skip layers, whose indexer is not constructed.
