@@ -26,19 +26,35 @@ never needing an activation scale — which is why it is reported as "critical f
 GB10 correctness". That framing is misleading: the issue is weight-only NVFP4,
 not the architecture.
 
-## Why a constant is a legitimate fix, not a fudge
+## ⚠️ A constant is NOT a legitimate fix (corrected 2026-08-30)
 
+This module used to argue that any value in a wide band was *correct*, because
 `input_scale` cancels analytically: activations are quantised with
-`gscale = 1/input_scale` and dequantised with `alpha ∝ input_scale`. It affects
-only how well activations fit fp4's range through the e4m3 block scales, so any
-value in a wide safe band is *correct*, not approximate:
+`gscale = 1/input_scale` and dequantised with `alpha ∝ input_scale`, so it affects
+only how well activations fit fp4's range through the e4m3 block scales. The two
+bounds are
 
   * no clipping requires  `input_scale >= amax_act / 2688`
   * no block-scale underflow requires roughly `input_scale <= amax_block / 0.1`
 
-1.0 sits inside that band for post-norm transformer activations, and it is the
-configuration the standalone MoE harness validated on GB10 against an fp32
-reference (`cos = 0.9969`, i.e. fp4 noise).
+and 1.0 was checked against a *tensor* amax of ~1.7 and declared safe. **That was
+wrong: the underflow bound is per 16-element BLOCK, not per tensor.** At
+`input_scale = 1.0` every activation block whose amax is below 0.1 has its fp8
+block scale flushed to zero. Which blocks those are depends on the input, so the
+model degrades intermittently and worse as context grows -- observed as
+"repeats itself time to time" on GB300 and reproduced on sm_120. The standalone
+harness missed it because a single short forward pass has few low-magnitude
+blocks.
+
+Real calibrated values for GLM-5.3-Flash span `5.58e-04 .. 3.72e-02`, median
+`1.58e-03`. **1.0 is 632x the median.**
+
+No single constant satisfies both bounds for every projection (clipping needs up
+to `3.7e-02`, underflow wants small). Prefer per-projection `input_scale` tensors
+from the checkpoint -- `LibertAIDAI/GLM-5.3-Flash-NVFP4` ships them in
+`model-input-scales.safetensors` -- or a weight-only A16 checkpoint, where
+activations are never quantised and there is no scale to get wrong. If you must
+use a constant here, `1.6e-03` is the measured median, not 1.0.
 
 Set `VLLM_GLM53_MOE_INPUT_SCALE` to override the value; unset, this module does
 nothing at all.
