@@ -114,6 +114,11 @@ is roughly 4 percent of throughput for double the cache.
 
 ## Limits
 
+The backend passes the indexer's full selection to attention, including the
+incomplete K-pool tail and masked padding. After installation, run
+`PYTHONPATH=/opt/ext python tests/run_backend.py` to check this backend path
+against the mean of all selected rows and verify nested text configurations.
+
 - 64 heads on a single rank is not built. It would need 114,944 bytes of shared
   memory against the 101,376 byte ceiling, so TP must be at least 2 on a 64-head
   model.

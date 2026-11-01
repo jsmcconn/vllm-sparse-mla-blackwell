@@ -189,7 +189,6 @@ class Glm53SparseMLAMetadata(AttentionMetadata):
     req_id_per_token: torch.Tensor
 
     block_size: int = 1
-    topk_tokens: int = 2048
 
     # `mla_attention.py::forward_impl` reads these unconditionally to split MQA
     # from dense-MHA tokens. Reporting every token as a decode token keeps
@@ -227,7 +226,6 @@ class Glm53SparseMLAMetadataBuilder(
         self.kv_cache_spec = kv_cache_spec
         self.model_config = vllm_config.model_config
         self.device = device
-        self.topk_tokens = vllm_config.model_config.hf_config.index_topk
         max_num_batched_tokens = vllm_config.scheduler_config.max_num_batched_tokens
         self.req_id_per_token_buffer = torch.empty(
             (max_num_batched_tokens,), dtype=torch.int32, device=device
@@ -260,7 +258,6 @@ class Glm53SparseMLAMetadataBuilder(
             block_table=common_attn_metadata.block_table_tensor,
             req_id_per_token=self.req_id_per_token_buffer[:num_tokens],
             block_size=self.kv_cache_spec.block_size,
-            topk_tokens=self.topk_tokens,
             num_decodes=common_attn_metadata.num_reqs,
             num_prefills=0,
             num_decode_tokens=num_tokens,
@@ -337,15 +334,6 @@ class Glm53SparseMLAImpl(MLAAttentionImpl[Glm53SparseMLAMetadata]):
         num_actual_toks = q.shape[0]
         assert self.topk_indices_buffer is not None
         topk_indices = self.topk_indices_buffer[:num_actual_toks]
-
-        # The kpool indexer emits topk + (kpool - 1) columns, which vLLM rounds up
-        # to a multiple of 128 (2048 -> 2176). Narrow at the call site rather than
-        # resizing the indexer's buffer: touching what the indexer writes risks it
-        # selecting nothing, and an all--1 row makes MLA return zeros, which
-        # presents as the model copying its prompt verbatim.
-        cap = int(attn_metadata.topk_tokens)
-        if topk_indices.shape[1] > cap:
-            topk_indices = topk_indices[:, :cap].contiguous()
 
         head_dim = kv_c_and_k_pe_cache.shape[-1]
         conv_kwargs = {}
