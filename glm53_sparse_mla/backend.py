@@ -310,6 +310,11 @@ class Glm53SparseMLAImpl(MLAAttentionImpl[Glm53SparseMLAMetadata]):
             indexer.topk_indices_buffer if indexer is not None else topk_indices_buffer
         )
 
+    def record_logical_topk_ready(self) -> None:
+        # vLLM calls this after the indexer. This backend converts each selection
+        # on the same CUDA stream and does not participate in index groups.
+        pass
+
     def forward_mqa(
         self,
         q: torch.Tensor | tuple[torch.Tensor, torch.Tensor],

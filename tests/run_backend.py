@@ -15,7 +15,6 @@ from vllm.v1.attention.backend import AttentionType
 def check_indexer_tail():
     q = torch.zeros((1, 32, 512), dtype=torch.bfloat16, device="cuda")
     cache = torch.zeros((1, 256, 512), dtype=q.dtype, device=q.device)
-    cache[0, 1:4] = torch.arange(1, 4, device=q.device)[:, None]
     indices = torch.full((1, 2176), -1, dtype=torch.int32, device=q.device)
     indices[0, 0] = 0
     indices[0, 2048:2051] = torch.arange(1, 4, device=q.device)
@@ -35,6 +34,14 @@ def check_indexer_tail():
         kv_sharing_target_layer_name=None, topk_indices_buffer=indices,
         kv_lora_rank=512,
     )
+    values = torch.arange(4, device=q.device, dtype=q.dtype)[:, None].expand(4, 512).contiguous()
+    impl.do_kv_cache_update(
+        values, torch.empty((4, 1, 0), dtype=q.dtype, device=q.device), cache,
+        torch.arange(4, dtype=torch.int64, device=q.device), "bfloat16",
+        torch.ones((), device=q.device),
+    )
+    torch.testing.assert_close(cache[0, :4], values, rtol=0, atol=0)
+    impl.record_logical_topk_ready()
     out, _ = impl.forward_mqa(q, cache, metadata, SimpleNamespace())
     # Zero queries give uniform attention over the four selected rows, including the tail.
     expected = cache[0, :4].float().mean(0).expand_as(out)
